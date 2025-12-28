@@ -1,0 +1,81 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(
+            name: 'ENV',
+            choices: ['dev', 'test', 'prod'],
+            description: 'Select environment'
+        )
+    }
+
+    environment {
+        AWS_DEFAULT_REGION = 'ap-south-1'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                sh """
+                  terraform init \
+                    -backend-config=env/${ENV}/backend.tfvars
+                """
+            }
+        }
+
+        stage('Terraform Plan') {
+            steps {
+                sh """
+                  terraform plan \
+                    -var-file=env/${ENV}/terraform.tfvars
+                """
+            }
+        }
+
+        stage('Terraform Apply') {
+            when {
+                expression { ENV != 'prod' }
+            }
+            steps {
+                sh """
+                  terraform apply \
+                    -var-file=env/${ENV}/terraform.tfvars \
+                    -auto-approve
+                """
+            }
+        }
+
+        stage('Manual Approval (PROD)') {
+            when {
+                expression { ENV == 'prod' }
+            }
+            steps {
+                input message: "Approve PROD deployment?"
+            }
+        }
+
+        stage('Terraform Apply (PROD)') {
+            when {
+                expression { ENV == 'prod' }
+            }
+            steps {
+                sh """
+                  terraform apply \
+                    -var-file=env/${ENV}/terraform.tfvars \
+                    -auto-approve
+                """
+            }
+        }
+    }
+}
+
+environment {
+    AWS_DEFAULT_REGION = 'ap-south-1'
+}
